@@ -1,0 +1,132 @@
+#include <VarSpeedServo.h>        //include the VarSpeedServo Library
+int JAW = 11;                     //Jaw LED on pin 11
+int EYES = 12;                    //Eyes on pin 12
+VarSpeedServo neckServo;          //declare neck servo object
+VarSpeedServo jawServo;           //declare jaw servo object
+
+static int8_t Send_buf[8] = {0};  //from the Catalex sample code need to figure out exactly what this does
+byte com = 0;                     //reply from voice recognition
+
+/*
+ * The following definitions assign user readable commands
+ * to their hex values for the Catalex board to read
+ */
+#define CMD_PLAY_W_INDEX 0X03     
+#define CMD_SET_VOLUME 0X06
+#define CMD_SEL_DEV 0X09
+#define DEV_TF 0X02
+#define CMD_PLAY 0X0D
+#define CMD_PAUSE 0X0E
+#define CMD_SINGLE_CYCLE 0X19
+#define SINGLE_CYCLE_ON 0X00
+#define SINGLE_CYCLE_OFF 0X01
+#define CMD_PLAY_W_VOL 0X22
+
+void setup() 
+{
+  Serial1.begin(9600);                //Serial1 is the geetech voice recognition
+	pinMode(EYES, OUTPUT);              //Declare eyes as an output
+  pinMode(JAW, OUTPUT);               //Declare jaw as an output
+  digitalWrite(EYES, HIGH);           //Turn eyes on
+  delay(2000);                        //delay 2 seconds
+  neckServo.attach (9);               //attach neck to pin 9
+  jawServo.attach (10);               //attach jaw to pin 10
+  neckServo.writeMicroseconds(1500);  //center neck 
+  jawServo.writeMicroseconds(1000);   //center jaw
+
+/*
+ * For loop is a single iteration diagnositic to test jaw
+ */
+  for (int j=1; j<2; j++)
+  {
+    jawServo.write(1200, 7, true);
+    jawServo.write(1000, 7, true);
+  }
+  digitalWrite(EYES, LOW);              //eyes off resting state
+  digitalWrite(JAW, LOW);               //jaw off resting state
+  delay(2000);                          //2 second delay
+  Serial1.write(0xAA);                  //serial commands to the voice rec.
+  Serial1.write(0x37);
+  delay(1000);
+  Serial1.write(0xAA);
+  Serial1.write(0x21);
+  Serial2.begin(9600);                  //start the mp3 module serial
+  delay(500);                           //Wait chip initialization is complete
+  sendCommand(CMD_SEL_DEV, DEV_TF);   //select the TF card  
+  delay(200);                           //wait for 200ms
+}
+void loop() 
+{
+while(Serial1.available())
+{
+com = Serial1.read();                 //Serial1 determines the case
+switch(com)
+{
+  case 0x11:
+  digitalWrite(EYES, HIGH);
+  sendCommand(CMD_PLAY_W_VOL, 0X0F01);
+  neckServo.write (35, 7, true);
+  neckServo.write (100, 7, true);
+  neckServo.write (90, 7, true);
+  digitalWrite(EYES, LOW);
+  break;
+  case 0x12:
+  digitalWrite(EYES, HIGH);
+  digitalWrite(JAW, HIGH);
+  sendCommand(CMD_PLAY_W_VOL, 0X0F01);
+  jawServo.write(1200, 7, true);
+  jawServo.write(1000, 7, true);
+  neckServo.write(35, 7, true);
+  neckServo.write(100, 7, true);
+  sendCommand(CMD_PLAY_W_VOL, 0X0F01);
+  delay(2000);                          //2 second delay to allow rawr
+  digitalWrite(EYES, LOW);
+  digitalWrite(JAW, LOW);
+  break;
+  case 0x13:                          //"Sleep, Rex!"
+jawServo.write(1000, 7, true);
+neckServo.write(90, 7, true);
+digitalWrite(EYES, LOW);
+digitalWrite(JAW, LOW);
+break;
+case 0x14:                          //"Blink, Rex!"
+for (int e=1; e<6; e=e+1)
+  {
+    digitalWrite(EYES, HIGH);
+    delay(300);
+    digitalWrite(EYES, LOW);
+    delay(300);
+  }
+digitalWrite(JAW, LOW);
+break;
+case 0x15:                          //"Chew your food!"
+digitalWrite(EYES, HIGH);
+digitalWrite(JAW, HIGH);
+for (int j=1; j<6; j=j+1)             
+   {                                    
+      jawServo.write(1200, 7, true);    //open jaw (microseconds, speed, must finish)
+      jawServo.write(1000, 7, true);   //close jaw (same as above)
+    }
+digitalWrite(JAW, LOW);
+digitalWrite(EYES, LOW);
+break;
+} 
+}
+}
+
+void sendCommand(int8_t command, int16_t dat)
+{
+  delay(20);
+  Send_buf[0] = 0x7e; //starting byte
+  Send_buf[1] = 0xff; //version
+  Send_buf[2] = 0x06; //the number of bytes of the command without starting byte and ending byte
+  Send_buf[3] = command; //
+  Send_buf[4] = 0x00;//0x00 = no feedback, 0x01 = feedback
+  Send_buf[5] = (int8_t)(dat >> 8);//datah
+  Send_buf[6] = (int8_t)(dat); //datal
+  Send_buf[7] = 0xef; //ending byte
+  for(uint8_t i=0; i<8; i++)//
+  {
+    Serial2.write(Send_buf[i]) ;
+  }
+}
